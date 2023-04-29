@@ -1,0 +1,28 @@
+sudo: required
+language: go
+go:
+  - 1.16.x
+git:
+  submodules: true
+  quiet: false
+deploy:
+  provider: releases
+  api_key: ${RELEASE_TOKEN}
+  file_glob: true
+  file: ./bin/*
+  skip_cleanup: true
+  on:
+    branch: master
+    tags: true
+before_script:
+  - sudo apt-get update
+  - sudo apt-get install -y make git g++ upx
+script:
+  - go mod vendor
+  - GOOS=linux GOARCH=amd64 make build
+  - GOOS=darwin GOARCH=amd64 make build
+  - GOOS=linux GOARCH=amd64 make compress || true
+  - GOOS=darwin GOARCH=amd64 make compress || true
+  - npm install
+  - tar -zcf ./bin/assets.tar.gz ./node_modules ./public
+  - sha256sum -b ./bin/assets.tar.gz | cut -f 1 -d ' ' > ./bin/assets.tar.gz.sha256
