@@ -1,19 +1,14 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
-	"os"
-	"path"
-	"strings"
 	"time"
 
 	"cloudshell/internal/log"
 	"cloudshell/pkg/xtermjs"
 
 	"github.com/gorilla/mux"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
 )
 
@@ -46,36 +41,12 @@ func runE(_ *cobra.Command, _ []string) error {
 	allowedHostnames := conf.GetStringSlice("allowed-hostnames")
 	keepalivePingTimeout := time.Duration(conf.GetInt("keepalive-ping-timeout")) * time.Second
 	maxBufferSizeBytes := conf.GetInt("max-buffer-size-bytes")
-	pathLiveness := conf.GetString("path-liveness")
-	pathMetrics := conf.GetString("path-metrics")
-	pathReadiness := conf.GetString("path-readiness")
 	pathXTermJS := conf.GetString("path-xtermjs")
 	serverAddress := conf.GetString("server-addr")
 	serverPort := conf.GetInt("server-port")
-	workingDirectory := conf.GetString("workdir")
-	if !path.IsAbs(workingDirectory) {
-		wd, err := os.Getwd()
-		if err != nil {
-			message := fmt.Sprintf("failed to get working directory: %s", err)
-			log.Error(message)
-			return errors.New(message)
-		}
-		workingDirectory = path.Join(wd, workingDirectory)
-	}
-	log.Infof("working directory     : '%s'", workingDirectory)
-	log.Infof("command               : '%s'", command)
-	log.Infof("arguments             : ['%s']", strings.Join(arguments, "', '"))
 
-	log.Infof("allowed hosts         : ['%s']", strings.Join(allowedHostnames, "', '"))
-	log.Infof("connection error limit: %v", connectionErrorLimit)
-	log.Infof("keepalive ping timeout: %v", keepalivePingTimeout)
-	log.Infof("max buffer size       : %v bytes", maxBufferSizeBytes)
 	log.Infof("server address        : '%s' ", serverAddress)
 	log.Infof("server port           : %v", serverPort)
-
-	log.Infof("liveness checks path  : '%s'", pathLiveness)
-	log.Infof("readiness checks path : '%s'", pathReadiness)
-	log.Infof("metrics endpoint path : '%s'", pathMetrics)
 	log.Infof("xtermjs endpoint path : '%s'", pathXTermJS)
 
 	// configure routing
@@ -98,41 +69,6 @@ func runE(_ *cobra.Command, _ []string) error {
 		MaxBufferSizeBytes:   maxBufferSizeBytes,
 	}
 	router.HandleFunc(pathXTermJS, xtermjs.GetHandler(xtermjsHandlerOptions))
-
-	// readiness probe endpoint
-	router.HandleFunc(pathReadiness, func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte("ok")); err != nil {
-			log.Error(err)
-		}
-	})
-
-	// liveness probe endpoint
-	router.HandleFunc(pathLiveness, func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte("ok")); err != nil {
-			log.Error(err)
-		}
-	})
-
-	// metrics endpoint
-	router.Handle(pathMetrics, promhttp.Handler())
-
-	// version endpoint
-	router.HandleFunc("/version", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte(VersionInfo)); err != nil {
-			log.Error(err)
-		}
-	})
-
-	// this is the endpoint for serving xterm.js assets
-	depenenciesDirectory := path.Join(workingDirectory, "./node_modules")
-	router.PathPrefix("/assets").Handler(http.StripPrefix("/assets", http.FileServer(http.Dir(depenenciesDirectory))))
-
-	// this is the endpoint for the root path aka website
-	publicAssetsDirectory := path.Join(workingDirectory, "./public")
-	router.PathPrefix("/").Handler(http.FileServer(http.Dir(publicAssetsDirectory)))
 
 	// start memory logging pulse
 	logWithMemory := createMemoryLog()
